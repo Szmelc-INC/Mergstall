@@ -1,5 +1,5 @@
 # Mergstall
-> ## RSYNC based Merge Installer script for Entropy Linux
+![image](https://github.com/user-attachments/assets/7c6c92e8-c795-4b03-8501-da502dcb19c5)
 
 ## Setup on non Entropy systems
 > Install dependencies, `rsync zip grub2` and also `figlet lolcat boxes` for visual enchancement \
