@@ -6,3 +6,10 @@
 > Create `/bin/mergstall.d/` directory \
 > Put `mergstall.sh`, `whitelist.conf` and `blacklist.conf` into `/bin/mergstall.d/` \
 > Run mergstall directly or create a symlink in `/bin/` for easy access.
+
+## Demo
+<a href="https://www.youtube.com/watch?v=saWgK_pwCyw">
+    <img src="https://i.imgur.com/i28JMRS.png" alt="Mergstall" width="600">
+</a>
+
+[Szmelc Incorporated YouTube Channel](https://www.youtube.com/@Szmelc-INC)
