@@ -1,22 +1,20 @@
 #!/bin/bash
-# SIMPLE RSYNC BASED MERGE INSTALLER SCRIPT FOR ENTROPY LINUX
+# MERGSTALL - MERGE INSTALL SCRIPT FOR ENTROPY LINUX
 
+# Require the script to be run with sudo
 if [ "$EUID" -ne 0 ]; then
   echo "Please run as root or sudo"
   exit 1
 fi
 
-clear
-figlet " Mergstall " -f slant | lolcat
-echo ""
-echo " ~ RSYNC based Installer for Entropy Linux"
-sleep 2
+clear && figlet " Mergstall v2.1 " -f slant | lolcat && echo ""
+echo " ====== RSYNC based Installer for Entropy Linux ====== " | lolcat && sleep 2
 
-# Unbind target if bound
+# Unbind target if already bound
 umount /mnt/target
 sleep 1
 
-# Variables
+# Define variables
 LIVE_ISO_ROOT="/"
 TARGET_ROOT="/mnt/target"
 SPAWN="$TARGET_ROOT/szmelc"
@@ -26,28 +24,27 @@ USE_WHITELIST=true
 LOG_FILE="/tmp/backup_operation_$(date +%Y%m%d%H%M%S).log"
 exec &> >(tee -a "$LOG_FILE")
 
-# Check if file exists
+# Generate conf
 check_file() {
     local file="$1"
     if [[ -f "$file" && -s "$file" ]]; then
-        return 0 # File exists and is non-empty
+        return 0
     else
-        return 1 # File is missing or empty
+        return 1 
     fi
 }
 
-# Log messages with timestamps
+# log with timestamps
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
+
 # Start logging
 log "Starting disk layout scan..."
 
 # Display disk layout
 figlet " Disk layout: " -f miniwi | lolcat
-lsblk | boxes -d parchment
-echo ""
-sleep 3.5
+lsblk | boxes -d parchment && echo "" && sleep 3.5
 
 # Detect Linux installations
 detect_linux_installations() {
@@ -62,7 +59,7 @@ detect_linux_installations() {
             if [[ -f "$TEMP_MOUNT/etc/lsb-release" ]]; then
                 DISTRO_NAME=$(grep -oP '^DISTRIB_ID="?\K[^"]+' "$TEMP_MOUNT/etc/lsb-release")
                 DISTRO_VERSION=$(grep -oP '^DISTRIB_RELEASE="?\K[^"]+' "$TEMP_MOUNT/etc/lsb-release")
-                log "Found: $DISTRO_NAME version $DISTRO_VERSION on $PARTITION"
+                log "Found Linux installation: $DISTRO_NAME version $DISTRO_VERSION on partition $PARTITION"
             fi
             umount "$TEMP_MOUNT"
         fi
@@ -73,61 +70,64 @@ detect_linux_installations() {
 
 # Detect Linux installations
 detect_linux_installations
+# Ask user to select the partition
+read -p "Select target root partition (e.g., /dev/sda1): " TARGET_PARTITION
 
-# Ask user to select the partition to update
-read -p "Select partition to update: (e.g., /dev/sda1) " TARGET_PARTITION
-
-# Verify the partition exists
+# Verify partition
 if [[ ! -b "$TARGET_PARTITION" ]]; then
     log "Error: Invalid partition. Exiting..."
     exit 1
 fi
-
-# Mount the target partition
+# Mount the target
 mkdir -p "$TARGET_ROOT"
 if ! mount "$TARGET_PARTITION" "$TARGET_ROOT"; then
     log "Error: Failed to mount target partition. Exiting..."
     exit 1
 fi
 
-echo " Target succesfully mounted..." | lolcat
-sleep 1
-figlet "  Stage 2  " -f miniwi | lolcat
-sleep 1
+echo " Target succesfully mounted..." | lolcat && sleep 1 && figlet "  Stage 2  " -f miniwi | lolcat && sleep 1
 
-# Create szmelc directory
-log "Creating szmelc directory at target..."
-mkdir -p "$SPAWN"
+# ============== USER FINDER =================
+echo "" && echo " Users found on target: " | lolcat
+cut -d: -f1 "$TARGET_ROOT"/etc/passwd | sort | grep -Fxf <(ls "$TARGET_ROOT"/home | sort) && echo ""
+read -p " Select user to update, or create new one: " CHOSEN_USER
 
-# Get the list of installed packages from the live ISO
-log "Collecting installed packages from the live ISO..."
+# backup configs
+# [todo: make it actually decent...]
+cp "$EXCLUDE_CONF" "$EXCLUDE_CONF"-old && cp "$INCLUDE_CONF" "$INCLUDE_CONF"-old
+
+# change /home/*/ to /home/<user>/
+sed -i "s|/home/[^/]\+/|/home/$CHOSEN_USER/|g" "$EXCLUDE_CONF" "$INCLUDE_CONF"
+
+# ============ SZMELC DIR =============
+log "Creating szmelc directory at target..." && mkdir -p "$SPAWN"
+# List installed packages from live ISO
+log "Reading installed packages from live ISO..."
 installed_packages=$(dpkg --get-selections | awk '$2 == "install" {print $1}')
 package_list_file="$SPAWN/packages.txt"
 echo "$installed_packages" > "$package_list_file"
 log "List of installed packages saved to $package_list_file."
 
-# Backup current (live ISO) home directory
-log "Backing up live ISO home directory..."
+# ======== BACKUP ==========
+# Backup current (live ISO) home
+log "Backing up live ISO home..."
 cd "$LIVE_ISO_ROOT/home" && zip -r "$SPAWN/new-home.zip" * &>> "$LOG_FILE"
-
-# Backup target's original home directory
-log "Backing up target system home directory..."
+# Backup target's home
+log "Backing up target system home..."
 cd "$TARGET_ROOT/home" && zip -r "$SPAWN/old-home.zip" * &>> "$LOG_FILE"
+log "Backup completed." | lolcat && sleep 1
+figlet " Stage 2 complete... " -f miniwi | lolcat && echo "" && sleep 1
 
-log "Backup completed." | lolcat
-sleep 1
-figlet " Stage 2 complete... " -f miniwi | lolcat 
-echo ""
-sleep 1
+# DEBUG! [ it breaks things...]
+sudo rm -fr "$TARGET_ROOT/usr/bin/postinstall"
+sudo rm -fr "$TARGET_ROOT/bin/postinstall"
 
 # ============ CHROOT ============
 # Prompt for chroot
-echo "Would you like to chroot into the target as root and execute post-installation tasks?" | lolcat 
+echo " ~ Chroot into the target? " | lolcat 
 read -t 5 -p "(y/N): " CHROOT_CONFIRM
-
-# Default to 'No' if no input or timeout
+# Default to 'N' if no input or timeout
 CHROOT_CONFIRM=${CHROOT_CONFIRM:-n}
-
 if [[ "$CHROOT_CONFIRM" =~ ^[Yy]$ ]]; then
     log "Preparing to chroot..."
     cp /etc/resolv.conf "$TARGET_ROOT/etc/resolv.conf"
@@ -135,78 +135,74 @@ if [[ "$CHROOT_CONFIRM" =~ ^[Yy]$ ]]; then
     mount --bind /proc "$TARGET_ROOT/proc"
     mount --bind /sys "$TARGET_ROOT/sys"
     mount --bind /run "$TARGET_ROOT/run"
-
-    # Temporary script for chroot commands
+    # Create a temporary script
     cat << 'EOF' > "$TARGET_ROOT/tmp/chroot_script.sh"
 #!/bin/bash
+figlet CHROOTed
+sleep 2
 # Placeholder for actual chroot logic
 echo "Chroot stage complete"
 EOF
-
     chmod +x "$TARGET_ROOT/tmp/chroot_script.sh"
-    log "Executing commands inside chroot..."
+    log "Executing inside chroot..."
     chroot "$TARGET_ROOT" /tmp/chroot_script.sh
     # Clean up after chroot
     rm "$TARGET_ROOT/tmp/chroot_script.sh"
-    log "Chroot operations completed."
+    log "Chroot completed."
 else
-    log "Skipped. Operation completed."
+    log "Skipped. Continuing!"
 fi
-# ============ CHROOT ============
+sleep 1 && figlet "  RSYNC in 3s  " -f miniwi | lolcat && sleep 3
 
-sleep 1
-figlet "  RSYNC in 3s  " -f miniwi | lolcat
-sleep 3
-
-# Check if whitelisting is enabled
+# ============ RSYNC ============
+# Verify whitelist
 if [ "$USE_WHITELIST" = true ]; then
-  if [ -f "$INCLUDE_CONF" ]; then
-    log "Using whitelist file: $INCLUDE_CONF"
-    RSYNC_INCLUDE="--include-from=$INCLUDE_CONF"
-  else
-    log "Whitelist file not found: $INCLUDE_CONF"
+  if [ ! -f "$INCLUDE_CONF" ]; then
+    log "Whitelist not found: $INCLUDE_CONF"
     exit 1
+  else
+    log "Whitelist.conf: $INCLUDE_CONF"
   fi
+fi
+# Verify blacklist
+if [ ! -f "$EXCLUDE_CONF" ]; then
+  log "Blacklist not found: $EXCLUDE_CONF"
+  exit 1
 else
-  RSYNC_INCLUDE=""
+  log "Blacklist.conf: $EXCLUDE_CONF"
 fi
 
-# Check if exclusion file exists
-if [ -f "$EXCLUDE_CONF" ]; then
-  log "Using exclusion file: $EXCLUDE_CONF"
-  RSYNC_EXCLUDE="--exclude-from=$EXCLUDE_CONF"
-else
-  RSYNC_EXCLUDE=""
-fi
+# Merge directories with rsync
+figlet "SYNC" -f miniwi | lolcat
+log "Starting sync..."
+rsync -avh \
+    --filter="include */" \
+    --filter="merge $EXCLUDE_CONF" \
+    --filter="merge $INCLUDE_CONF" \
+    --filter="exclude *" \
+    --prune-empty-dirs \
+    "$LIVE_ISO_ROOT/" "$TARGET_ROOT/" | tee -a "$LOG_FILE"
 
-# Merge systems using rsync
-log "Starting directory merge..."
-rsync -avh $RSYNC_INCLUDE $RSYNC_EXCLUDE "$LIVE_ISO_ROOT" "$TARGET_ROOT" | tee -a "$LOG_FILE"
-
-# Check rsync status
+# Check status
 if [ $? -eq 0 ]; then
-  log "Merge completed successfully."
+  log "Merge succesfull!"
 else
-  log "Error during merge. Exiting..."
+  log "Error during merge :( Exiting..."
   exit 1
 fi
 
-figlet " CONFIGURING BOOTLOADER " -f miniwi
-sleep 1
+figlet " CONFIG BOOTLOADER " -f miniwi && sleep 1
 
-mount --bind /dev /mnt/target/dev
-mount --bind /proc /mnt/target/proc
-mount --bind /sys /mnt/target/sys
-mount --bind /run /mnt/target/run
+mount --bind /dev /mnt/target/dev && mount --bind /proc /mnt/target/proc && mount --bind /sys /mnt/target/sys && mount --bind /run /mnt/target/run
+
+# Optional snippet to create new user
+#chroot /mnt/target /bin/bash -c "useradd -M $CHOSEN_USER && echo '$CHOSEN_USER:$CHOSEN_USER' | chpasswd"
+# Configure bootloader
 
 chroot /mnt/target /bin/bash -c "update-grub"
-
-umount /mnt/target/dev
-umount /mnt/target/proc
-umount /mnt/target/sys
-umount /mnt/target/run
+chroot /mnt/target /bin/bash -c "plymouth-set-default-theme szmelc -R"
+# update-initramfs -u
+umount /mnt/target/dev && umount /mnt/target/proc && umount /mnt/target/sys && umount /mnt/target/run
 
 # Final message
-figlet " COMPLETE! " -f miniwi | lolcat
-sleep 3
-exit
+figlet " MERGSTALL COMPLETE! " -f miniwi | lolcat && echo "[ Enjoy new features! <3 ]" && sleep 3 && exit
