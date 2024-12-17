@@ -1,5 +1,19 @@
-# Mergstall
+# Mergstall v2
 ![image](https://github.com/user-attachments/assets/7c6c92e8-c795-4b03-8501-da502dcb19c5)
+
+## [Important changes in v2]
+> Mergstall v2 had some big changes to
+> `Defining paths`\
+> ALL paths are excluded by default, unless specified in whitelist.conf \
+> Prefix each line with `+` to include, and `-` to exclude\
+> `- /path/` - does nothing.\
+> `- /path/*` - will exclude ONLY files that are in `/path/`, but NOT folders and files within them.\
+> `- /path/**` - will exclude entire `/path/` directory and its contents\
+> Excluding entire path with `/path/**`, will prevent you from including it's subpath `/path/path2/**`.\
+> If same one path will is defined both in whitelist.conf & blacklist.conf, it will be excluded. \
+> If `/path/path2/**` is whitelisted, then everything within `/path2/**` will be included, but nothing from `/path/` except `/path2/` itself. 
+
+
 
 ## Setup on non Entropy systems
 > Install dependencies, `rsync zip grub2` and also `figlet lolcat boxes` for visual enchancement \
